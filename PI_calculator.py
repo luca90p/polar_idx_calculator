@@ -70,42 +70,55 @@ with tab2:
     else:
         st.info("Inserisci i dati delle sessioni per iniziare il tracking.")
 
-# --- TAB 3: PLANNING ---
+# --- TAB 3: PLANNING AGGIORNATO ---
 with tab3:
     st.header("🔧 Ottimizzazione del Lavoro Rimanente")
-    st.write("Calcola i minuti necessari per centrare il PI target a fine settimana.")
+    st.write("Calcola il bilanciamento Z1/Z2 necessario in base ai minuti di Z3 che vuoi aggiungere.")
     
-    c1, c2 = st.columns(2)
-    target_pi_t3 = c1.slider("Target PI Settimanale", 1.0, 3.5, 2.0)
-    strategy = c2.radio("Strategia:", ("Standard 80% Z1", "Minimizza Tempo Totale"))
+    target_pi = st.slider("Target PI Settimanale", 1.0, 3.5, 2.5, key="t3_pi")
     
-    # Dati eseguiti (collegati al tab 2 per comodità)
-    m1_done, m2_done, m3_done = m1, m2, m3
+    # Nuova opzione chiesta dall'utente
+    strategy = st.radio("Strategia di Pianificazione:", 
+                        ("Specifica Delta Z3 (+ 80% Z1)", "Standard 80% Z1 (Volume Fisso)", "Minimizza Tempo Totale"))
     
-    res_config = None
-    if strategy == "Standard 80% Z1":
+    res_final = None
+    
+    if strategy == "Specifica Delta Z3 (+ 80% Z1)":
+        delta_z3 = st.number_input("Quanti altri minuti in Z3 vuoi fare?", min_value=0.0, value=30.0)
+        z3_final_target = m3_done + delta_z3
+        f1_fixed = 0.80 # Standard d'élite
+        
+        # Risoluzione per il volume totale necessario
+        f3_required = solve_for_f3_with_f1(f1_fixed, target_pi)
+        if f3_required > 0:
+            total_vol_needed = z3_final_target / f3_required
+            res_final = (total_vol_needed * f1_fixed, total_vol_needed * (0.2 - f3_required), z3_final_target)
+        
+    elif strategy == "Standard 80% Z1 (Volume Fisso)":
+        target_vol = st.number_input("Volume Totale Target (min)", value=300)
         f1 = 0.80
-        f2 = solve_for_f2(f1, target_pi_t3)
-        f3 = 1 - f1 - f2
-        # Calcolo volume finale per coprire i minuti già fatti
-        m_final = max(m1_done/f1, m2_done/f2, m3_done/f3) if f2 > 0 and f3 > 0 else 0
-        res_config = (m_final*f1, m_final*f2, m_final*f3)
-    else:
-        # Ottimizzazione Min-Time
+        f2 = (f1 * (1 - f1)) / ((10**target_pi / 100) + f1)
+        res_final = (target_vol * f1, target_vol * f2, target_vol * (1-f1-f2))
+        
+    else: # Minimizza Tempo Totale
         best_m = float('inf')
         for f1_t in np.linspace(0.60, 0.95, 351):
-            f2_t = solve_for_f2(f1_t, target_pi_t3)
+            k_t = (10**target_pi) / 100
+            f2_t = (f1_t * (1 - f1_t)) / (k_t + f1_t)
             f3_t = 1 - f1_t - f2_t
             if f2_t > 0 and f3_t > 0:
                 m_req = max(m1_done/f1_t, m2_done/f2_t, m3_done/f3_t)
                 if m_req < best_m:
-                    best_m, res_config = m_req, (m_req*f1_t, m_req*f2_t, m_req*f3_t)
+                    best_m, res_final = m_req, (m_req*f1_t, m_req*f2_t, m_req*f3_t)
 
-    if res_config:
-        r1, r2, r3 = max(0, res_config[0]-m1_done), max(0, res_config[1]-m2_done), max(0, res_config[2]-m3_done)
-        st.subheader("📋 Output: Minuti Rimanenti")
-        res_col1, res_col2, res_col3 = st.columns(3)
-        res_col1.warning(f"Z1: {int(r1)} min")
-        res_col2.info(f"Z2: {int(r2)} min")
-        res_col3.success(f"Z3: {int(r3)} min")
-        st.write(f"**Volume Finale Settimanale:** {int(sum(res_config))} min")
+    if res_final:
+        r1, r2, r3 = max(0, res_final[0]-m1_done), max(0, res_final[1]-m2_done), max(0, res_final[2]-m3_done)
+        st.subheader("📋 Output: Minuti Rimanenti da Eseguire")
+        oc1, oc2, oc3 = st.columns(3)
+        oc1.warning(f"Z1 (Easy): {int(r1)} min")
+        oc2.info(f"Z2 (Soglia): {int(r2)} min")
+        oc3.success(f"Z3 (Qualità): {int(r3)} min")
+        
+        st.write(f"**Volume Finale Settimana:** {int(sum(res_final))} min | PI Finale: {target_pi:.2f}")
+        if r1 + r2 + r3 == 0:
+            st.error("⚠️ Attenzione: I minuti già eseguiti superano la configurazione target per questo PI.")
