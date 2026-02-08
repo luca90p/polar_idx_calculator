@@ -145,7 +145,7 @@ with tab3:
     col_set, col_res = st.columns([1, 2])
     
     with col_set:
-        target_pi_opt = st.slider("PI Obiettivo", 1.0, 3.5, 2.4, step=0.1)
+        target_pi_opt = st.slider("PI Obiettivo", 1.0, 3.5, 2.4, step=0.025)
         mode = st.radio("Strategia", 
                         ["A. Standard 80% Z1", 
                          "B. Fisso Delta Z3 (Minimizza Tempo)", 
